@@ -1,0 +1,154 @@
+x-edge-user: &edge-user "2000:2000"
+
+services:
+  # ---------------------------------------------------------------------------
+  # NATS: JetStream persistence + built-in MQTT listener.
+  # Single messaging owner for the edge: core NATS subjects for internal
+  # publishers, MQTT 3.1.1 on 1883 for eKuiper and any local MQTT client.
+  # ---------------------------------------------------------------------------
+  host-init:
+    image: alpine:3.23.5
+    restart: "no"
+    user: "0:0"
+    environment:
+      TARGET_UID: "2000"
+      TARGET_GID: "2000"
+    volumes:
+      - ./init/host-init.sh:/init.sh:ro
+      - /opt/emqx:/host/emqx
+      - /opt/nats:/host/nats
+    entrypoint: [ "/bin/sh", "/init.sh" ]
+    network_mode: none
+
+  nats:
+    user: *edge-user
+    image: nats:2.14-alpine
+    restart: unless-stopped
+    command: ["-c", "/etc/nats/nats.conf"]
+    ports:
+      - "4222:4222"   # core NATS / JetStream
+      - "8222:8222"   # monitoring
+      - "7422:7422"   # for leaf node to connect
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+      - /opt/nats:/data
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- 'http://localhost:8222/healthz?js-enabled-only=true' >/dev/null || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      host-init:
+        condition: service_completed_successfully
+    networks: [iot-edge]
+
+  # ---------------------------------------------------------------------------
+  # One-shot: create/update the INFERENCE and ALERTS JetStream streams.
+  # Exits 0 on success. Its retry loop is bounded (see nats/init.sh) so a
+  # failure surfaces in the Komodo log within 60s instead of hanging the deploy.
+  # ---------------------------------------------------------------------------
+  # Version: 0.19.7
+  # Release-Date: Jun 2, 2026 at 11:43 am
+  nats-init:
+    user: *edge-user
+    image: natsio/nats-box:latest
+    restart: "no"
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - ./nats/init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    networks: [iot-edge]
+
+  emqx:
+    user: *edge-user
+    image: emqx/emqx:6.3.0
+    restart: always
+    container_name: emqx
+    environment:
+      - EMQX_NODE__COOKIE
+      - EMQX_NODE_NAME=emqx@streamaggregator.eastus.cloudapp.azure.com
+      - HOME=/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 25s
+      retries: 5
+    networks: [iot-edge]
+    ports:
+      - "443:443"
+      - "1883:1883"
+      - "8083:8083"
+      - "8084:8084"
+      - "8883:8883"
+      - "18083:18083"
+      - "18084:18084"
+    volumes:
+      - /opt/emqx/data:/opt/emqx/data
+      - /opt/emqx/etc:/opt/emqx/etc
+      - /opt/emqx/log:/opt/emqx/log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+    depends_on:
+      emqx-init:
+        condition: service_completed_successfully
+
+  emqx-init:
+    image: emqx/emqx:6.3.0        # same tag as the emqx service
+    restart: "no"
+    user: "0:0"
+    environment:
+      TARGET_UID: "2000"
+      TARGET_GID: "2000"
+    volumes:
+      - ./emqx/init.sh:/init.sh:ro
+      - ./emqx/emqx.conf:/seed/emqx.conf:ro
+      - /opt/emqx/etc:/host/etc
+    entrypoint: [ "/bin/sh", "/init.sh" ]
+    depends_on:
+      host-init:
+        condition: service_completed_successfully
+    network_mode: none
+
+  rp-alerts-to-emqx:
+    user: *edge-user
+    image: docker.redpanda.com/redpandadata/connect:latest
+    container_name: rp-alerts-to-emqx
+    restart: unless-stopped
+    command: ["run", "/connect.yaml"]
+    env_file:
+      - ./redpanda-connect/emqx.env
+    volumes:
+      - ./redpanda-connect/alerts-to-emqx.yaml:/connect.yaml:ro
+      # Uncomment if central EMQX uses a private CA and set EMQX_ROOT_CA_FILE
+      # in redpanda-connect/emqx.env to /certs/ca.pem.
+      # - ./redpanda-connect/certs:/certs:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+        restart: true
+      nats-init:
+        condition: service_completed_successfully
+      emqx:
+        condition: service_started
+      emqx-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:4195/ready >/dev/null || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [iot-edge]
+
+# Project-scoped network: Compose names it <project>_iot-edge, so a leftover
+# stack can never contend for it and `docker compose down` actually removes it.
+# Service-to-service DNS (nats, ekuiper) is unaffected -- it resolves by
+# service name, not container name.
+networks:
+  iot-edge: {}
