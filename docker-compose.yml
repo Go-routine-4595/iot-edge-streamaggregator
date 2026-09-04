@@ -23,7 +23,8 @@ services:
   nats:
     user: *edge-user
     image: nats:2.14-alpine
-    restart: unless-stopped
+    restart: unless-
+    container_name: nats
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "4222:4222"   # core NATS / JetStream
