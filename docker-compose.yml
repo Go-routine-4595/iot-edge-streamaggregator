@@ -97,6 +97,8 @@ services:
     depends_on:
       emqx-init:
         condition: service_completed_successfully
+    extra_hosts:
+      - "streamaggregator.eastus.cloudapp.azure.com"
 
   emqx-init:
     image: emqx/emqx:6.3.0        # same tag as the emqx service
