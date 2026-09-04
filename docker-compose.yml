@@ -98,7 +98,7 @@ services:
       emqx-init:
         condition: service_completed_successfully
     extra_hosts:
-      - "streamaggregator.eastus.cloudapp.azure.com"
+      - "streamaggregator.eastus.cloudapp.azure.com:127.0.0.1"
 
   emqx-init:
     image: emqx/emqx:6.3.0        # same tag as the emqx service
