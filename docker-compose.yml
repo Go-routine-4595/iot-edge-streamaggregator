@@ -33,6 +33,7 @@ services:
     volumes:
       - ./nats/nats.conf:/etc/nats/nats.conf:ro
       - /opt/nats:/data
+      - /etc/nats/certs:/etc/nats/certs:ro
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- 'http://localhost:8222/healthz?js-enabled-only=true' >/dev/null || exit 1" ]
       interval: 5s
