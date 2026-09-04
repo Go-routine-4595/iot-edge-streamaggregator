@@ -23,7 +23,7 @@ services:
   nats:
     user: *edge-user
     image: nats:2.14-alpine
-    restart: unless-
+    restart: unless-stopped
     container_name: nats
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
