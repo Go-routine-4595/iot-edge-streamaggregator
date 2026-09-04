@@ -51,7 +51,6 @@ services:
   # Version: 0.19.7
   # Release-Date: Jun 2, 2026 at 11:43 am
   nats-init:
-    user: *edge-user
     image: natsio/nats-box:latest
     restart: "no"
     depends_on:
