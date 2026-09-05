@@ -71,13 +71,24 @@ done
 # --- reachability report -----------------------------------------------------
 # A source pointed at an unreachable domain is created without error and simply
 # sits idle, so check explicitly rather than discovering it later.
+# Checks the expected streams exist, not merely that the domain answers -- a
+# device whose JetStream is up but whose own init.sh never ran would otherwise
+# look healthy here and then source nothing.
 for d in $EDGE_DOMAINS; do
-    if nats --server "$URL" --js-domain "$d" stream ls >/dev/null 2>&1; then
-        echo "  ok       $d reachable"
-    else
+    have=$(nats --server "$URL" --js-domain "$d" stream ls --json 2>/dev/null || echo '[]')
+    if [ "$have" = "[]" ]; then
         echo "  WARNING  $d not reachable right now (device offline?)."
-        echo "           Its source is still created and catches up on return."
+        echo "           Its sources are still created and catch up on return."
+        continue
     fi
+    for want in INFERENCE ALERTS; do
+        if echo "$have" | jq -e --arg s "$want" 'index($s)' >/dev/null 2>&1; then
+            echo "  ok       $d has $want"
+        else
+            echo "  WARNING  $d is reachable but has no $want stream."
+            echo "           Its source for $want will be created and stay idle."
+        fi
+    done
 done
 
 # --- build a source-only stream config --------------------------------------
