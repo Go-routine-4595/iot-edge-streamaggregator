@@ -62,7 +62,7 @@ services:
     # not require a stack redeploy. host-init creates the file if missing.
     # After editing it:  docker compose run --rm nats-init
     env_file:
-      - /opt/nats/devices.env
+      - /etc/nats/devices.env
     environment:
       # Unset in normal operation. Set to "1" for the ONE cutover run that
       # converts the old subject-based streams to source-only -- it deletes the
