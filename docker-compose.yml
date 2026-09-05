@@ -53,11 +53,21 @@ services:
   # Version: 0.19.7
   # Release-Date: Jun 2, 2026 at 11:43 am
   nats-init:
-    image: natsio/nats-box:latest
+    image: natsio/nats-box:0.19.7
     restart: "no"
     depends_on:
       nats:
         condition: service_healthy
+    # Device roster lives on the host, NOT in this repo, so adding an edge does
+    # not require a stack redeploy. host-init creates the file if missing.
+    # After editing it:  docker compose run --rm nats-init
+    env_file:
+      - /opt/nats/devices.env
+    environment:
+      # Unset in normal operation. Set to "1" for the ONE cutover run that
+      # converts the old subject-based streams to source-only -- it deletes the
+      # streams and their contents.
+      - RECREATE
     volumes:
       - ./nats/init.sh:/init.sh:ro
     entrypoint: ["/bin/sh", "/init.sh"]

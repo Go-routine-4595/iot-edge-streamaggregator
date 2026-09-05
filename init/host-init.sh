@@ -31,5 +31,11 @@ chmod u+rw \
 chmod o+r /etc/nats
 chown -R "${TARGET_UID}:${TARGET_GID}" /etc/nats
 
+# NATS device.env creation is it doesn't exist
+[ -f /host/nats/devices.env ] || {
+    echo 'EDGE_DOMAINS=' > /host/nats/devices.env
+    chown "$TARGET_UID:$TARGET_GID" /host/nats/devices.env
+}
+
 ls -ld "$EMQX_BASE_DIR" "$EMQX_BASE_DIR/log" "$EMQX_BASE_DIR/etc" "$EMQX_BASE_DIR/data" "$NATS_BASE_DIR"
 echo "-------------------------- host-init exiting --------------------------"
