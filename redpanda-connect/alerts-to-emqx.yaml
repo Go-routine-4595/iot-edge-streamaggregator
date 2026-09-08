@@ -3,7 +3,7 @@ input:
     urls:
       - nats://nats:4222
     stream: ALERTS
-    subject: "*.videoai.alerts"
+    subject: "videoai.alerts"
     durable: rp_alerts_to_emqx
     ack_wait: 30s
     max_ack_pending: 128
